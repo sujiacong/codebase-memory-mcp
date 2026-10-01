@@ -40,21 +40,37 @@ IS_GCC := $(shell echo | $(CC) -dM -E - 2>/dev/null | grep -q '__GNUC__' && ! ec
 GCC_ONLY_FLAGS :=
 ifeq ($(IS_GCC),yes)
 GCC_ONLY_FLAGS := -Wno-format-truncation -Wno-unused-result \
-                  -Wno-stringop-truncation -Wno-alloc-size-larger-than
+                  -Wno-stringop-truncation
+# -Wno-alloc-size-larger-than is GCC 9+ only; GCC 8 rejects it under -Werror.
+GCC_GE_9 := $(shell echo | $(CC) -dM -E - 2>/dev/null | awk '/__GNUC__/{print $$3>=9?1:0}')
+ifeq ($(GCC_GE_9),1)
+GCC_ONLY_FLAGS += -Wno-alloc-size-larger-than
+endif
 endif
 
 # -Wdate-time: with -Werror, any use of __DATE__/__TIME__/__TIMESTAMP__ fails the
 # build. Build-time entropy is how one identical source tree produced a new hash
 # on every compile (see the local patch in vendored/mimalloc/src/options.c) —
 # once removed, it must not creep back through a new call site.
-CFLAGS_COMMON = -std=c11 -D_DEFAULT_SOURCE -D_GNU_SOURCE -Wall -Wextra -Werror \
+#
+# GCC 8's -Walloc-size-larger-than produces false positives (e.g. calloc with a
+# normal int count) and the warning can't be suppressed on GCC 8, so demote
+# -Werror to plain warnings there.
+WERROR := -Werror
+ifeq ($(IS_GCC),yes)
+ifneq ($(GCC_GE_9),1)
+WERROR :=
+endif
+endif
+
+CFLAGS_COMMON = -std=c11 -D_DEFAULT_SOURCE -D_GNU_SOURCE -Wall -Wextra $(WERROR) \
                 -Wno-unused-parameter -Wno-sign-compare -Wdate-time \
                 $(GCC_ONLY_FLAGS) \
                 -Isrc -Ivendored -Ivendored/sqlite3 \
                 -Ivendored/mimalloc/include \
                 -I$(CBM_DIR) -I$(TS_INCLUDE) -I$(BUILD_DIR)/generated
 
-CXXFLAGS_COMMON = -std=c++14 -Wall -Wextra -Werror \
+CXXFLAGS_COMMON = -std=c++14 -Wall -Wextra $(WERROR) \
                   -Wno-unused-parameter \
                   -I$(CBM_DIR) -I$(TS_INCLUDE)
 
@@ -294,9 +310,9 @@ endif
 # instead of the system libstdc++ (scripts/msan.sh overrides both vars).
 CXX_STDLIB ?= -lstdc++
 CXX_STDLIB_FLAGS ?=
-LDFLAGS = -lm $(CXX_STDLIB) -lpthread -lz $(WIN32_LIBS) $(STATIC_FLAGS) $(MIMALLOC_WRAP_FLAGS) $(MEMWASTE_LDFLAGS) $(ELF_HARDENING_FLAGS)
-LDFLAGS_TEST = -lm $(CXX_STDLIB) -lpthread -lz $(SANITIZE) $(WIN32_LIBS) $(MIMALLOC_WRAP_FLAGS) $(ELF_HARDENING_FLAGS)
-LDFLAGS_TSAN = -lm $(CXX_STDLIB) -lpthread -lz $(TSAN_SANITIZE) $(WIN32_LIBS) $(MIMALLOC_WRAP_FLAGS) $(ELF_HARDENING_FLAGS)
+LDFLAGS = -lm $(CXX_STDLIB) -lpthread -lz -ldl $(WIN32_LIBS) $(STATIC_FLAGS) $(MIMALLOC_WRAP_FLAGS) $(MEMWASTE_LDFLAGS) $(ELF_HARDENING_FLAGS)
+LDFLAGS_TEST = -lm $(CXX_STDLIB) -lpthread -lz -ldl $(SANITIZE) $(WIN32_LIBS) $(MIMALLOC_WRAP_FLAGS) $(ELF_HARDENING_FLAGS)
+LDFLAGS_TSAN = -lm $(CXX_STDLIB) -lpthread -lz -ldl $(TSAN_SANITIZE) $(WIN32_LIBS) $(MIMALLOC_WRAP_FLAGS) $(ELF_HARDENING_FLAGS)
 
 # ── Source files ─────────────────────────────────────────────────
 

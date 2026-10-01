@@ -2744,9 +2744,11 @@ static int cbm_pipeline_run_staged(cbm_pipeline_t *p) {
     /* Phase 1: Discover files */
     CBM_PROF_START(t_discover);
     p->resource_violation = (cbm_index_resource_violation_t){0};
+    char cbmignore_path[4096];
+    snprintf(cbmignore_path, sizeof(cbmignore_path), "%s/.cbmignore", p->repo_path);
     cbm_discover_opts_t opts = {
         .mode = p->requested_mode,
-        .ignore_file = NULL,
+        .ignore_file = cbm_file_exists(cbmignore_path) ? cbmignore_path : NULL,
         .max_file_size = 0,
         .resource_policy =
             cbm_index_policy_enabled(&p->resource_policy) ? &p->resource_policy : NULL,
